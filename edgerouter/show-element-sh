@@ -1,0 +1,6 @@
+#!/bin/vbash --login
+
+source /opt/vyatta/etc/functions/script-template
+
+configure
+show $@
