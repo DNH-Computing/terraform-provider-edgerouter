@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -60,11 +61,14 @@ func (c *Client) login(username, password string) error {
 	if _, err := io.ReadAll(resp.Body); err != nil {
 		return fmt.Errorf("error reading login response: %w", err)
 	}
+	log.Printf("[TRACE] Login suceeded as %s", username)
+
 	return nil
 }
 
 func (c *Client) Post(ctx context.Context, path string, input, output interface{}) error {
 	body, err := json.Marshal(input)
+	log.Printf("[DEBUG] Sending request: %s", body)
 	if err != nil {
 		return fmt.Errorf("error marshalling input body: %w", err)
 	}
@@ -77,13 +81,19 @@ func (c *Client) Post(ctx context.Context, path string, input, output interface{
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		log.Printf("[WARN] Got unknwon error: %s", err)
 		return fmt.Errorf("could not perform HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		log.Printf("[DEBUG] Got response code %d", resp.StatusCode)
 		return fmt.Errorf("unexpected response code %d: %+v", resp.StatusCode, resp)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&output); err != nil {
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(resp.Body)
+	bodyString := buf.String()
+	log.Printf("[DEBUG] Got response: %s", bodyString)
+	if err := json.NewDecoder(buf).Decode(&output); err != nil {
 		return fmt.Errorf("error unmarshalling response body: %w", err)
 	}
 
