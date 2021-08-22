@@ -2,31 +2,49 @@ package edgerouter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-type GetZonePolicyInput struct {
-	Get *ZonePolicy `json:"GET,omitempty"` // omitempty to not put anything in the JSON if the field is `nil`
-}
-type GetZonePolicyOutput struct {
-	Get *ZonePolicy `json:"GET"`
-	Output
+type PresentMarker bool
+
+func (marker *PresentMarker) MarshalJSON() ([]byte, error) {
+	return json.Marshal(nil)
 }
 
-type SetZonePolicyInput struct {
-	Set *ZonePolicy `json:"SET,omitempty"`
-}
-type SetZonePolicyOutput struct {
-	Set *ZonePolicy `json:"SET"`
-	MutationOutput
+func (marker *PresentMarker) isPresent() bool {
+	if marker == nil {
+		return true
+	} else if *marker {
+		return false
+	} else {
+		panic("Is present callled on non-sentinel value. Something is very wrong here.")
+	}
 }
 
-type DeleteZonePolicyInput struct {
-	Delete *ZonePolicy `json:"DELETE"`
+func sentinelMarker() *PresentMarker {
+	marker := PresentMarker(true)
+	return &marker
 }
-type DeleteZonePolicyOutput struct {
+
+func converToMarker(value bool) *PresentMarker {
+	if value {
+		var marker PresentMarker
+		return &marker
+	} else {
+		return nil
+	}
+}
+
+type ZonePolicyInput struct {
+	Get    *ZonePolicy `json:"GET,omitempty"` // omitempty to not put anything in the JSON if the field is `nil`
+	Set    *ZonePolicy `json:"SET,omitempty"`
+	Delete *ZonePolicy `json:"DELETE,omitempty"`
+}
+type ZonePolicyOutput struct {
+	Get json.RawMessage `json:"GET"` // This need to be unmarshalled when we read it because the router 'helpfully' resonds and if it's empty the struct isn't correct for unmarshalling. So we deferr the unmarshalling until we want to read it.
 	MutationOutput
 }
 type ZonePolicy struct {
@@ -35,18 +53,20 @@ type ZonePolicy struct {
 type ZonePolicyNode struct {
 	Zone map[string]*ZoneNode `json:"zone"`
 }
+
 type ZoneNode struct {
 	// TODO local zone how?
 	DefaultAction string                   `json:"default-action,omitempty"`
 	From          map[string]*ZoneNodeFrom `json:"from,omitempty"`
 	Interface     []string                 `json:"interface,omitempty"`
+	LocalZone     *PresentMarker           `json:"local-zone,omitempty"`
 }
 type ZoneNodeFrom struct {
 	Firewall ZoneNodeFromFirewall `json:"firewall"`
 }
 type ZoneNodeFromFirewall struct {
-	Name     string `json:"name"`
-	Ipv6Name string `json:"ipv6-name"`
+	Name     *string `json:"name,omitempty"`
+	Ipv6Name *string `json:"ipv6-name,omitempty"`
 }
 
 func edgeosZonePolicyResource() *schema.Resource {
@@ -69,10 +89,8 @@ func edgeosZonePolicyResource() *schema.Resource {
 				},
 			},
 			"local_zone": {
-				Type:          schema.TypeBool,
-				Optional:      true,
-				ForceNew:      true,
-				ConflictsWith: []string{"interfaces"},
+				Type:     schema.TypeBool,
+				Optional: true,
 			},
 			"default_action": {
 				Type:     schema.TypeString,
@@ -89,7 +107,7 @@ func edgeosZonePolicyRead(d *schema.ResourceData, meta interface{}) error {
 	client := config.Client
 
 	zoneName := d.Get("name").(string)
-	zonePolicyGet := GetZonePolicyInput{
+	zonePolicyGet := ZonePolicyInput{
 		Get: &ZonePolicy{
 			ZonePolicy: &ZonePolicyNode{
 				Zone: map[string]*ZoneNode{
@@ -98,7 +116,7 @@ func edgeosZonePolicyRead(d *schema.ResourceData, meta interface{}) error {
 			},
 		},
 	}
-	var zonePolicy GetZonePolicyOutput
+	var zonePolicy ZonePolicyOutput
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicyGet, &zonePolicy)
 	if err != nil {
 		return err
@@ -107,9 +125,43 @@ func edgeosZonePolicyRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Could not read zone policy %s", zoneName)
 	}
 
-	d.Set("default_action", zonePolicy.Get.ZonePolicy.Zone[zoneName].DefaultAction)
-	d.Set("interfaces", zonePolicy.Get.ZonePolicy.Zone[zoneName].Interface)
+	zonePolicyFromRouter := ZonePolicy{
+		ZonePolicy: &ZonePolicyNode{
+			Zone: map[string]*ZoneNode{
+				zoneName: &ZoneNode{
+					LocalZone: sentinelMarker(),
+				},
+			},
+		},
+	}
+
+	if err = json.Unmarshal(zonePolicy.Get, &zonePolicyFromRouter); err != nil {
+		return err
+	}
+
+	if zonePolicyFromRouter.ZonePolicy.Zone[zoneName] == nil {
+		return fmt.Errorf("Zone %s was not found", zoneName)
+	}
+
+	d.Set("default_action", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].DefaultAction)
+	d.Set("interfaces", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].Interface)
+	d.Set("local_zone", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].LocalZone.isPresent())
 	return nil
+}
+
+func edgeosZonePolicyCreateStruct(d *schema.ResourceData) *ZonePolicy {
+	zoneName := d.Get("name").(string)
+	return &ZonePolicy{
+		ZonePolicy: &ZonePolicyNode{
+			Zone: map[string]*ZoneNode{
+				zoneName: {
+					DefaultAction: d.Get("default_action").(string),
+					Interface:     stringSlice(d.Get("interfaces").(*schema.Set).List()),
+					LocalZone:     converToMarker(d.Get("local_zone").(bool)),
+				},
+			},
+		},
+	}
 }
 
 func edgeosZonePolicyCreate(d *schema.ResourceData, meta interface{}) error {
@@ -119,27 +171,30 @@ func edgeosZonePolicyCreate(d *schema.ResourceData, meta interface{}) error {
 	client := config.Client
 
 	zoneName := d.Get("name").(string)
-	zonePolicySet := SetZonePolicyInput{
-		Set: &ZonePolicy{
-			ZonePolicy: &ZonePolicyNode{
-				Zone: map[string]*ZoneNode{
-					zoneName: {
-						DefaultAction: d.Get("default_action").(string),
-						Interface:     stringSlice(d.Get("interfaces").(*schema.Set).List()),
-					},
-				},
-			},
-		},
+	zonePolicySet := ZonePolicyInput{
+		Set: edgeosZonePolicyCreateStruct(d),
 	}
 
-	var zonePolicySetOutput SetZonePolicyOutput
+	var zonePolicySetOutput ZonePolicyOutput
 
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicySet, &zonePolicySetOutput)
 	if err != nil {
 		return err
 	}
 
+	d.SetId(zoneName)
 	return handleAPIResponse(zonePolicySetOutput.MutationOutput)
+}
+
+func edgeosZonePolicyDeleteStruct(d *schema.ResourceData) *ZonePolicy {
+	zoneName := d.Get("name").(string)
+	return &ZonePolicy{
+		ZonePolicy: &ZonePolicyNode{
+			Zone: map[string]*ZoneNode{
+				zoneName: nil,
+			},
+		},
+	}
 }
 
 func edgeosZonePolicyDelete(d *schema.ResourceData, meta interface{}) error {
@@ -148,16 +203,9 @@ func edgeosZonePolicyDelete(d *schema.ResourceData, meta interface{}) error {
 	defer config.Lock.Unlock()
 	client := config.Client
 
-	zoneName := d.Get("name").(string)
-	var zonePolicyDelteOutput DeleteZonePolicyOutput
-	zonePolicyDelete := DeleteZonePolicyInput{
-		Delete: &ZonePolicy{
-			ZonePolicy: &ZonePolicyNode{
-				Zone: map[string]*ZoneNode{
-					zoneName: nil,
-				},
-			},
-		},
+	var zonePolicyDelteOutput ZonePolicyOutput
+	zonePolicyDelete := ZonePolicyInput{
+		Delete: edgeosZonePolicyDeleteStruct(d),
 	}
 
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicyDelete, &zonePolicyDelteOutput)
@@ -170,15 +218,22 @@ func edgeosZonePolicyDelete(d *schema.ResourceData, meta interface{}) error {
 }
 
 func edgeosZonePolicyUpdate(d *schema.ResourceData, meta interface{}) error {
-	err := edgeosZonePolicyDelete(d, meta)
+	config := meta.(*Config)
+	config.Lock.Lock()
+	defer config.Lock.Unlock()
+	client := config.Client
+
+	var zonePolicyDelteOutput ZonePolicyOutput
+	zonePolicyDelete := ZonePolicyInput{
+		Delete: edgeosZonePolicyDeleteStruct(d),
+		Set:    edgeosZonePolicyCreateStruct(d),
+	}
+
+	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicyDelete, &zonePolicyDelteOutput)
+
 	if err != nil {
 		return err
 	}
 
-	err = edgeosZonePolicyCreate(d, meta)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return handleAPIResponse(zonePolicyDelteOutput.MutationOutput)
 }

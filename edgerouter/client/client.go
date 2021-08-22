@@ -89,11 +89,14 @@ func (c *Client) Post(ctx context.Context, path string, input, output interface{
 		log.Printf("[DEBUG] Got response code %d", resp.StatusCode)
 		return fmt.Errorf("unexpected response code %d: %+v", resp.StatusCode, resp)
 	}
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-	bodyString := buf.String()
-	log.Printf("[DEBUG] Got response: %s", bodyString)
-	if err := json.NewDecoder(buf).Decode(&output); err != nil {
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[DEBUG] Got response: %s", string(responseBody))
+
+	if err := json.Unmarshal(responseBody, &output); err != nil {
 		return fmt.Errorf("error unmarshalling response body: %w", err)
 	}
 
