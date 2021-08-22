@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/DNH-Computing/terraform-provider-edgerouter/edgerouter/model"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -37,32 +38,16 @@ func edgeosZonePolocyFromResource() *schema.Resource {
 	}
 }
 
-func emptyStringToNil(value string) *string {
-	if value == "" {
-		return nil
-	} else {
-		return &value
-	}
-}
-
-func nillStringToEmpty(value *string) string {
-	if value == nil {
-		return ""
-	} else {
-		return *value
-	}
-}
-
-func edgeosZonePolicyFromCreateStruct(d *schema.ResourceData) *ZonePolicy {
+func edgeosZonePolicyFromCreateStruct(d *schema.ResourceData) *model.Root {
 	fromZone := d.Get("from_zone").(string)
 	toZone := d.Get("to_zone").(string)
-	return &ZonePolicy{
-		ZonePolicy: &ZonePolicyNode{
-			Zone: map[string]*ZoneNode{
+	return &model.Root{
+		ZonePolicy: &model.ZonePolicy{
+			Zone: map[string]*model.ZoneNode{
 				toZone: {
-					From: map[string]*ZoneNodeFrom{
+					From: map[string]*model.ZoneNodeFrom{
 						fromZone: {
-							Firewall: ZoneNodeFromFirewall{
+							Firewall: model.ZoneNodeFromFirewall{
 								Name:     emptyStringToNil(d.Get("policy").(string)),
 								Ipv6Name: emptyStringToNil(d.Get("ipv6_policy").(string)),
 							},
@@ -84,18 +69,18 @@ func edgeosZonePolicyFromCreate(d *schema.ResourceData, meta interface{}) error 
 	toZone := d.Get("to_zone").(string)
 	d.SetId(fmt.Sprintf("%s-to-%s", fromZone, toZone))
 
-	zonePolicyFromSet := ZonePolicyInput{
+	zonePolicyFromSet := model.Input{
 		Set: edgeosZonePolicyFromCreateStruct(d),
 	}
 
-	var zonePolicySetOutput ZonePolicyOutput
+	var zonePolicySetOutput model.Output
 
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicyFromSet, &zonePolicySetOutput)
 	if err != nil {
 		return err
 	}
 
-	return handleAPIResponse(zonePolicySetOutput.MutationOutput)
+	return model.HandleAPIResponse(zonePolicySetOutput)
 }
 
 func edgeosZonePolicyFromRead(d *schema.ResourceData, meta interface{}) error {
@@ -107,13 +92,13 @@ func edgeosZonePolicyFromRead(d *schema.ResourceData, meta interface{}) error {
 	fromZone := d.Get("from_zone").(string)
 	toZone := d.Get("to_zone").(string)
 
-	var zonePolicyfrom ZonePolicyOutput
-	zonePolicyFromGet := ZonePolicyInput{
-		Get: &ZonePolicy{
-			ZonePolicy: &ZonePolicyNode{
-				Zone: map[string]*ZoneNode{
+	var zonePolicyfrom model.Output
+	zonePolicyFromGet := model.Input{
+		Get: &model.Root{
+			ZonePolicy: &model.ZonePolicy{
+				Zone: map[string]*model.ZoneNode{
 					toZone: {
-						From: map[string]*ZoneNodeFrom{
+						From: map[string]*model.ZoneNodeFrom{
 							fromZone: nil,
 						},
 					},
@@ -131,26 +116,26 @@ func edgeosZonePolicyFromRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("General error occoured. Not further details are avilable")
 	}
 
-	var zonePolicyFromRouter ZonePolicy
+	var zonePolicyFromRouter model.Root
 	if err = json.Unmarshal(zonePolicyfrom.Get, &zonePolicyFromRouter); err != nil {
 		return err
 	}
 
 	from := zonePolicyFromRouter.ZonePolicy.Zone[fromZone].From[toZone]
 	d.SetId(fmt.Sprintf("%s-to-%s", fromZone, toZone))
-	d.Set("policy", nillStringToEmpty(from.Firewall.Name))
-	d.Set("ipv6_policy", nillStringToEmpty(from.Firewall.Ipv6Name))
+	d.Set("policy", nilStringToEmpty(from.Firewall.Name))
+	d.Set("ipv6_policy", nilStringToEmpty(from.Firewall.Ipv6Name))
 	return nil
 }
 
-func edgeosZonePolicyFromDeleteStruct(d *schema.ResourceData) *ZonePolicy {
+func edgeosZonePolicyFromDeleteStruct(d *schema.ResourceData) *model.Root {
 	fromZone := d.Get("from_zone").(string)
 	toZone := d.Get("to_zone").(string)
-	return &ZonePolicy{
-		ZonePolicy: &ZonePolicyNode{
-			Zone: map[string]*ZoneNode{
+	return &model.Root{
+		ZonePolicy: &model.ZonePolicy{
+			Zone: map[string]*model.ZoneNode{
 				toZone: {
-					From: map[string]*ZoneNodeFrom{
+					From: map[string]*model.ZoneNodeFrom{
 						fromZone: nil,
 					},
 				},
@@ -165,8 +150,8 @@ func edgeosZonePolicyFromDelete(d *schema.ResourceData, meta interface{}) error 
 	defer config.Lock.Unlock()
 	client := config.Client
 
-	var deleteOutput ZonePolicyOutput
-	delete := ZonePolicyInput{
+	var deleteOutput model.Output
+	delete := model.Input{
 		Delete: edgeosZonePolicyDeleteStruct(d),
 	}
 
@@ -175,5 +160,5 @@ func edgeosZonePolicyFromDelete(d *schema.ResourceData, meta interface{}) error 
 		return err
 	}
 
-	return handleAPIResponse(deleteOutput.MutationOutput)
+	return model.HandleAPIResponse(deleteOutput)
 }

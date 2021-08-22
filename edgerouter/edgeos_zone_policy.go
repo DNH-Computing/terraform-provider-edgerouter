@@ -5,69 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/DNH-Computing/terraform-provider-edgerouter/edgerouter/model"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
-
-type PresentMarker bool
-
-func (marker *PresentMarker) MarshalJSON() ([]byte, error) {
-	return json.Marshal(nil)
-}
-
-func (marker *PresentMarker) isPresent() bool {
-	if marker == nil {
-		return true
-	} else if *marker {
-		return false
-	} else {
-		panic("Is present callled on non-sentinel value. Something is very wrong here.")
-	}
-}
-
-func sentinelMarker() *PresentMarker {
-	marker := PresentMarker(true)
-	return &marker
-}
-
-func converToMarker(value bool) *PresentMarker {
-	if value {
-		var marker PresentMarker
-		return &marker
-	} else {
-		return nil
-	}
-}
-
-type ZonePolicyInput struct {
-	Get    *ZonePolicy `json:"GET,omitempty"` // omitempty to not put anything in the JSON if the field is `nil`
-	Set    *ZonePolicy `json:"SET,omitempty"`
-	Delete *ZonePolicy `json:"DELETE,omitempty"`
-}
-type ZonePolicyOutput struct {
-	Get json.RawMessage `json:"GET"` // This need to be unmarshalled when we read it because the router 'helpfully' resonds and if it's empty the struct isn't correct for unmarshalling. So we deferr the unmarshalling until we want to read it.
-	MutationOutput
-}
-type ZonePolicy struct {
-	ZonePolicy *ZonePolicyNode `json:"zone-policy"`
-}
-type ZonePolicyNode struct {
-	Zone map[string]*ZoneNode `json:"zone"`
-}
-
-type ZoneNode struct {
-	// TODO local zone how?
-	DefaultAction string                   `json:"default-action,omitempty"`
-	From          map[string]*ZoneNodeFrom `json:"from,omitempty"`
-	Interface     []string                 `json:"interface,omitempty"`
-	LocalZone     *PresentMarker           `json:"local-zone,omitempty"`
-}
-type ZoneNodeFrom struct {
-	Firewall ZoneNodeFromFirewall `json:"firewall"`
-}
-type ZoneNodeFromFirewall struct {
-	Name     *string `json:"name,omitempty"`
-	Ipv6Name *string `json:"ipv6-name,omitempty"`
-}
 
 func edgeosZonePolicyResource() *schema.Resource {
 	return &schema.Resource{
@@ -107,29 +47,29 @@ func edgeosZonePolicyRead(d *schema.ResourceData, meta interface{}) error {
 	client := config.Client
 
 	zoneName := d.Get("name").(string)
-	zonePolicyGet := ZonePolicyInput{
-		Get: &ZonePolicy{
-			ZonePolicy: &ZonePolicyNode{
-				Zone: map[string]*ZoneNode{
+	zonePolicyGet := model.Input{
+		Get: &model.Root{
+			ZonePolicy: &model.ZonePolicy{
+				Zone: map[string]*model.ZoneNode{
 					zoneName: nil,
 				},
 			},
 		},
 	}
-	var zonePolicy ZonePolicyOutput
+	var zonePolicy model.Output
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicyGet, &zonePolicy)
 	if err != nil {
 		return err
 	}
-	if !zonePolicy.Success {
-		return fmt.Errorf("Could not read zone policy %s", zoneName)
+	if err = model.HandleAPIResponse(zonePolicy); err != nil {
+		return err
 	}
 
-	zonePolicyFromRouter := ZonePolicy{
-		ZonePolicy: &ZonePolicyNode{
-			Zone: map[string]*ZoneNode{
-				zoneName: &ZoneNode{
-					LocalZone: sentinelMarker(),
+	zonePolicyFromRouter := model.Root{
+		ZonePolicy: &model.ZonePolicy{
+			Zone: map[string]*model.ZoneNode{
+				zoneName: &model.ZoneNode{
+					LocalZone: model.SentinelMarker(),
 				},
 			},
 		},
@@ -145,19 +85,19 @@ func edgeosZonePolicyRead(d *schema.ResourceData, meta interface{}) error {
 
 	d.Set("default_action", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].DefaultAction)
 	d.Set("interfaces", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].Interface)
-	d.Set("local_zone", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].LocalZone.isPresent())
+	d.Set("local_zone", zonePolicyFromRouter.ZonePolicy.Zone[zoneName].LocalZone.IsPresent())
 	return nil
 }
 
-func edgeosZonePolicyCreateStruct(d *schema.ResourceData) *ZonePolicy {
+func edgeosZonePolicyCreateStruct(d *schema.ResourceData) *model.Root {
 	zoneName := d.Get("name").(string)
-	return &ZonePolicy{
-		ZonePolicy: &ZonePolicyNode{
-			Zone: map[string]*ZoneNode{
+	return &model.Root{
+		ZonePolicy: &model.ZonePolicy{
+			Zone: map[string]*model.ZoneNode{
 				zoneName: {
 					DefaultAction: d.Get("default_action").(string),
 					Interface:     stringSlice(d.Get("interfaces").(*schema.Set).List()),
-					LocalZone:     converToMarker(d.Get("local_zone").(bool)),
+					LocalZone:     model.ConvertToMarker(d.Get("local_zone").(bool)),
 				},
 			},
 		},
@@ -171,11 +111,11 @@ func edgeosZonePolicyCreate(d *schema.ResourceData, meta interface{}) error {
 	client := config.Client
 
 	zoneName := d.Get("name").(string)
-	zonePolicySet := ZonePolicyInput{
+	zonePolicySet := model.Input{
 		Set: edgeosZonePolicyCreateStruct(d),
 	}
 
-	var zonePolicySetOutput ZonePolicyOutput
+	var zonePolicySetOutput model.Output
 
 	err := client.Post(context.Background(), "/api/edge/batch.json", &zonePolicySet, &zonePolicySetOutput)
 	if err != nil {
@@ -183,14 +123,14 @@ func edgeosZonePolicyCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	d.SetId(zoneName)
-	return handleAPIResponse(zonePolicySetOutput.MutationOutput)
+	return model.HandleAPIResponse(zonePolicySetOutput)
 }
 
-func edgeosZonePolicyDeleteStruct(d *schema.ResourceData) *ZonePolicy {
+func edgeosZonePolicyDeleteStruct(d *schema.ResourceData) *model.Root {
 	zoneName := d.Get("name").(string)
-	return &ZonePolicy{
-		ZonePolicy: &ZonePolicyNode{
-			Zone: map[string]*ZoneNode{
+	return &model.Root{
+		ZonePolicy: &model.ZonePolicy{
+			Zone: map[string]*model.ZoneNode{
 				zoneName: nil,
 			},
 		},
@@ -203,8 +143,8 @@ func edgeosZonePolicyDelete(d *schema.ResourceData, meta interface{}) error {
 	defer config.Lock.Unlock()
 	client := config.Client
 
-	var zonePolicyDelteOutput ZonePolicyOutput
-	zonePolicyDelete := ZonePolicyInput{
+	var zonePolicyDelteOutput model.Output
+	zonePolicyDelete := model.Input{
 		Delete: edgeosZonePolicyDeleteStruct(d),
 	}
 
@@ -214,7 +154,7 @@ func edgeosZonePolicyDelete(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	return handleAPIResponse(zonePolicyDelteOutput.MutationOutput)
+	return model.HandleAPIResponse(zonePolicyDelteOutput)
 }
 
 func edgeosZonePolicyUpdate(d *schema.ResourceData, meta interface{}) error {
@@ -223,8 +163,8 @@ func edgeosZonePolicyUpdate(d *schema.ResourceData, meta interface{}) error {
 	defer config.Lock.Unlock()
 	client := config.Client
 
-	var zonePolicyDelteOutput ZonePolicyOutput
-	zonePolicyDelete := ZonePolicyInput{
+	var zonePolicyDelteOutput model.Output
+	zonePolicyDelete := model.Input{
 		Delete: edgeosZonePolicyDeleteStruct(d),
 		Set:    edgeosZonePolicyCreateStruct(d),
 	}
@@ -235,5 +175,5 @@ func edgeosZonePolicyUpdate(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	return handleAPIResponse(zonePolicyDelteOutput.MutationOutput)
+	return model.HandleAPIResponse(zonePolicyDelteOutput)
 }
