@@ -1,5 +1,41 @@
 package model
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// FirewallBoolean Used to represent the enable/disable option used for firewall options
+type FirewallBoolean bool
+
+func (logging *FirewallBoolean) MarshalJSON() ([]byte, error) {
+	if logging == nil {
+		return json.Marshal(nil)
+	}
+
+	if *logging {
+		return json.Marshal("enable")
+	}
+
+	return json.Marshal("disable")
+}
+
+func (logging *FirewallBoolean) UnmarshalJSON(valueFromAPI []byte) error {
+	var value string
+	if err := json.Unmarshal(valueFromAPI, &value); err != nil {
+		return err
+	}
+
+	if value == "enable" {
+		*logging = true
+	} else if value == "disable" {
+		*logging = false
+	} else {
+		return fmt.Errorf("Got %s instead of enable or disable", value)
+	}
+	return nil
+}
+
 // Firewall is the base type of the firewall
 type Firewall struct {
 	// The IPv4 Firewall Policies
@@ -29,11 +65,13 @@ type FirewallPolicy struct {
 
 // FirewallPolicyRule is a single rule in a policy
 type FirewallPolicyRule struct {
-	Action      string                   `json:"action"`
-	Protocol    *string                  `json:"protocol,omitempty"`
-	Log         bool                     `json:"log"`
-	Source      *FirewallPolicyRuleMatch `json:"source,omitempty"`
-	Destination *FirewallPolicyRuleMatch `json:"destination,omitempty"`
+	Action      string                      `json:"action"`
+	Protocol    *string                     `json:"protocol,omitempty"`
+	Log         FirewallBoolean             `json:"log"`
+	Source      *FirewallPolicyRuleMatch    `json:"source,omitempty"`
+	Destination *FirewallPolicyRuleMatch    `json:"destination,omitempty"`
+	Description *string                     `json:"description,omitempty"`
+	State       map[string]*FirewallBoolean `json:"state,omitempty"`
 	// TODO there's a bunch more stuff here that we don't use
 }
 
@@ -47,6 +85,6 @@ type FirewallPolicyRuleMatch struct {
 // FirewallPolicyRuleMatchGroup reference things in the FirewallCommonElements type.
 type FirewallPolicyRuleMatchGroup struct {
 	AddressGroup []string `json:"address-group,omitempty"`
-	// TODO Port Group
+	PortGroup    []string `json:"port-group,omitempty"`
 	// TODO Network Group
 }

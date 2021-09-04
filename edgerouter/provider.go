@@ -22,6 +22,7 @@ func Provider() *schema.Provider {
 			// "edgeos_interface_ethernet": resourceEdgeosInterfaceEthernet(),
 			"edgeos_zone_policy":      edgeosZonePolicyResource(),
 			"edgeos_zone_policy_from": edgeosZonePolocyFromResource(),
+			"edgeos_firewall":         edgeosFirewallResource(),
 		},
 		ConfigureFunc: configureProvider,
 	}

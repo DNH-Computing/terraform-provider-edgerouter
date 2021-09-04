@@ -91,21 +91,29 @@ type Status struct {
 // HandleAPIResponse does standard error handing for the mutation API
 func HandleAPIResponse(response Output) error {
 	// Check for sets
-	if response.Set != nil && response.Set.Success && !response.Set.Failure {
+	if response.Set != nil &&
+		response.Set.Success == StatusBoolean(true) &&
+		response.Set.Failure != StatusBoolean(false) {
 		return fmt.Errorf("Error in set command: %s", string(response.Set.Error))
 	}
 
 	// Check for deletes
-	if response.Delete != nil && response.Delete.Success && !response.Delete.Failure {
+	if response.Delete != nil &&
+		response.Delete.Success == StatusBoolean(true) &&
+		response.Delete.Failure != StatusBoolean(false) {
 		return fmt.Errorf("Could not execute delete: %s", string(response.Delete.Error))
 	}
 
-	if response.Commit != nil && response.Commit.Success && !response.Commit.Failure {
+	if response.Commit != nil &&
+		response.Commit.Success == StatusBoolean(true) &&
+		response.Commit.Failure != StatusBoolean(false) {
 		return fmt.Errorf("Error committing change: %s", string(response.Commit.Error))
 	}
 
 	// Check for saves
-	if response.Save != nil && response.Save.Success && !response.Save.Failure {
+	if response.Save != nil &&
+		response.Save.Success == StatusBoolean(true) &&
+		response.Save.Failure != StatusBoolean(false) {
 		return fmt.Errorf("Could not save changes: %s", string(response.Save.Error))
 	}
 
