@@ -22,6 +22,6 @@ type Output struct {
 
 // Root is the root of the configuration tree
 type Root struct {
-	ZonePolicy *ZonePolicy `json:"zone-policy"`
-	Firewall   *Firewall   `json:"firewall"`
+	ZonePolicy *ZonePolicy `json:"zone-policy,omitempty"`
+	Firewall   *Firewall   `json:"firewall,omitempty"`
 }

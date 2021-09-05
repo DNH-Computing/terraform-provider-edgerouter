@@ -252,10 +252,20 @@ func edgeosFirewallConvertFromTerraform(terraformRule interface{}) (map[int]*mod
 		protocol := rule["protocol"].(string)
 		description := rule["description"].(string)
 		states := rule["state"].(*schema.Set).List()
-		// destination_port_group := rule["destination_port_group"].(*schema.Set).List()
+		destinationPortGroup := stringSlice(rule["destination_port_group"].(*schema.Set).List())
 
 		if rules[prioity] != nil {
 			return nil, fmt.Errorf("Two rules have the same prioity %d", prioity)
+		}
+
+		addDestination := false
+		destination := model.FirewallPolicyRuleMatch{
+			// TODO only create this if we have to
+			Group: &model.FirewallPolicyRuleMatchGroup{},
+		}
+		if destinationPortGroup != nil && len(destinationPortGroup) > 0 {
+			destination.Group.PortGroup = destinationPortGroup
+			addDestination = true
 		}
 
 		rules[prioity] = &model.FirewallPolicyRule{
@@ -264,7 +274,10 @@ func edgeosFirewallConvertFromTerraform(terraformRule interface{}) (map[int]*mod
 			Protocol:    emptyStringToNil(protocol),
 			Description: emptyStringToNil(description),
 			State:       edgeosFirewallStatesFromStrings(stringSlice(states)),
-			// TODO destination
+		}
+
+		if addDestination {
+			rules[prioity].Destination = &destination
 		}
 	}
 	return rules, nil

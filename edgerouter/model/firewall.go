@@ -50,11 +50,19 @@ type Firewall struct {
 // FirewallCommonElements are common elements that are referenced in firewall policies
 type FirewallCommonElements struct {
 	AddressGroup map[string]*FirewallAddressGroup `json:"address-group,omitempty"`
+	PortGroup    map[string]*FirewallPortGroup    `json:"port-group,omitempty"`
 }
 
 // FirewallAddressGroup is an address group defintion
 type FirewallAddressGroup struct {
-	Address []string `json:"address,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Address     []string `json:"address,omitempty"`
+}
+
+// FirewallPortGroup represents a group of firewall ports
+type FirewallPortGroup struct {
+	Description string   `json:"description,omitempty"`
+	Port        []string `json:"port,omitempty"`
 }
 
 // FirewallPolicy is a firewall policy
