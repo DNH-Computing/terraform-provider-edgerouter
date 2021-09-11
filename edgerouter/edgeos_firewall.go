@@ -73,11 +73,8 @@ func edgeosFirewallResource() *schema.Resource {
 						},
 						// TODO Other port types
 						"destination_port_group": {
-							Type:     schema.TypeSet,
+							Type:     schema.TypeString,
 							Optional: true,
-							Elem: &schema.Schema{
-								Type: schema.TypeString,
-							},
 						},
 					},
 				},
@@ -252,7 +249,7 @@ func edgeosFirewallConvertFromTerraform(terraformRule interface{}) (map[int]*mod
 		protocol := rule["protocol"].(string)
 		description := rule["description"].(string)
 		states := rule["state"].(*schema.Set).List()
-		destinationPortGroup := stringSlice(rule["destination_port_group"].(*schema.Set).List())
+		destinationPortGroup := rule["destination_port_group"].(string)
 
 		if rules[prioity] != nil {
 			return nil, fmt.Errorf("Two rules have the same prioity %d", prioity)
@@ -263,8 +260,8 @@ func edgeosFirewallConvertFromTerraform(terraformRule interface{}) (map[int]*mod
 			// TODO only create this if we have to
 			Group: &model.FirewallPolicyRuleMatchGroup{},
 		}
-		if destinationPortGroup != nil && len(destinationPortGroup) > 0 {
-			destination.Group.PortGroup = destinationPortGroup
+		if destinationPortGroup != "" {
+			destination.Group.PortGroup = emptyStringToNil(destinationPortGroup)
 			addDestination = true
 		}
 

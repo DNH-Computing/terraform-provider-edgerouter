@@ -14,9 +14,9 @@ type Output struct {
 	// This need to be unmarshalled when we read it because the router 'helpfully' resonds and if it's empty the struct isn't correct for unmarshalling. So we deferr the unmarshalling until we want to read it.
 	Get     json.RawMessage `json:"GET"`
 	Success bool            `json:"success"`
-	Commit  *Status         `json:"COMMIT"`
+	Commit  *Status         `json:"COMMIT,omitempty"`
 	Set     *Status         `json:"SET,omitempty"`
-	Save    *Status         `json:"SAVE"`
+	Save    *Status         `json:"SAVE,omitempty"`
 	Delete  *Status         `json:"DELETE,omitempty"`
 }
 
@@ -24,4 +24,5 @@ type Output struct {
 type Root struct {
 	ZonePolicy *ZonePolicy `json:"zone-policy,omitempty"`
 	Firewall   *Firewall   `json:"firewall,omitempty"`
+	Interface  *Interface  `json:"interfaces,omitempty"`
 }

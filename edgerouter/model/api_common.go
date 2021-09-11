@@ -3,6 +3,9 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+
+	"github.com/gdexlab/go-render/render"
 )
 
 // PresentMarker is a marker type for nodes which are just present as keys.
@@ -90,30 +93,28 @@ type Status struct {
 
 // HandleAPIResponse does standard error handing for the mutation API
 func HandleAPIResponse(response Output) error {
+	log.Printf("[DEBUG] deocded response: %s", render.AsCode(response))
+
 	// Check for sets
 	if response.Set != nil &&
-		response.Set.Success == StatusBoolean(true) &&
-		response.Set.Failure != StatusBoolean(false) {
+		(!response.Set.Success || response.Set.Failure) {
 		return fmt.Errorf("Error in set command: %s", string(response.Set.Error))
 	}
 
 	// Check for deletes
 	if response.Delete != nil &&
-		response.Delete.Success == StatusBoolean(true) &&
-		response.Delete.Failure != StatusBoolean(false) {
+		(!response.Delete.Success || response.Delete.Failure) {
 		return fmt.Errorf("Could not execute delete: %s", string(response.Delete.Error))
 	}
 
 	if response.Commit != nil &&
-		response.Commit.Success == StatusBoolean(true) &&
-		response.Commit.Failure != StatusBoolean(false) {
+		(!response.Commit.Success || response.Commit.Failure) {
 		return fmt.Errorf("Error committing change: %s", string(response.Commit.Error))
 	}
 
 	// Check for saves
 	if response.Save != nil &&
-		response.Save.Success == StatusBoolean(true) &&
-		response.Save.Failure != StatusBoolean(false) {
+		(!response.Save.Success || response.Save.Failure) {
 		return fmt.Errorf("Could not save changes: %s", string(response.Save.Error))
 	}
 

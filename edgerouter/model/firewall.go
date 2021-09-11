@@ -93,6 +93,6 @@ type FirewallPolicyRuleMatch struct {
 // FirewallPolicyRuleMatchGroup reference things in the FirewallCommonElements type.
 type FirewallPolicyRuleMatchGroup struct {
 	AddressGroup []string `json:"address-group,omitempty"`
-	PortGroup    []string `json:"port-group,omitempty"`
+	PortGroup    *string  `json:"port-group,omitempty"`
 	// TODO Network Group
 }
