@@ -34,8 +34,25 @@ func edgeosInterfaceTunnelResource() *schema.Resource {
 				Required: true,
 			},
 			"bridge_group": {
-				Type:     schema.TypeString,
+				Type:     schema.TypeList,
 				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"bridge": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"priority": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+						"cost": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -61,7 +78,7 @@ func edgeosInterfaceTunnelSetNode(d *schema.ResourceData) *model.Root {
 					LocalIP:       d.Get("local_ip").(string),
 					RemoteIP:      d.Get("remote_ip").(string),
 					Encapsulation: d.Get("encapsulation").(string),
-					BridgeGroup:   emptyStringToNil(d.Get("bridge_group").(string)),
+					BridgeGroup:   edgeosBridgeGroupConvertFromTerraform(d.Get("bridge_group").([]interface{})),
 				},
 			},
 		},
@@ -100,7 +117,9 @@ func edgeosInterfaceTunnelRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("local_ip", root.Interface.Tunnel[tunnelName].LocalIP)
 	d.Set("remote_ip", root.Interface.Tunnel[tunnelName].RemoteIP)
 	d.Set("encapsulation", root.Interface.Tunnel[tunnelName].Encapsulation)
-	d.Set("bridge_group", nilStringToEmpty(root.Interface.Tunnel[tunnelName].BridgeGroup))
+	if err := d.Set("bridge_group", edgeosBridgeGroupConvertToTerraform(root.Interface.Tunnel[tunnelName].BridgeGroup)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -167,4 +186,43 @@ func edgeosInterfaceTunnelUpdate(d *schema.ResourceData, meta interface{}) error
 	}
 
 	return nil
+}
+
+// edgeosBridgeGroupConvertToTerraform converts a possibly-nil model.BridgeGroup to a terraform data structure.
+func edgeosBridgeGroupConvertToTerraform(response *model.BridgeGroup) (terraformBridgeGroups []interface{}) {
+	if response == nil {
+		return nil
+	}
+
+	terraformBridgeGroup := make(map[string]interface{})
+	terraformBridgeGroup["bridge"] = nilStringToEmpty(response.Bridge)
+	if response.Priority != nil {
+		terraformBridgeGroup["priority"] = *response.Priority
+	}
+	if response.Cost != nil {
+		terraformBridgeGroup["cost"] = *response.Cost
+	}
+	return []interface{}{terraformBridgeGroup}
+}
+
+// edgeosBridgeGroupConvertFromTerraform converts terraform configuration to a possibly-nil model.BridgeGroup
+func edgeosBridgeGroupConvertFromTerraform(terraformBridgeGroups []interface{}) *model.BridgeGroup {
+	if len(terraformBridgeGroups) == 0 {
+		return nil
+	}
+
+	terraformMap := terraformBridgeGroups[0].(map[string]interface{})
+	bridgeGroup := &model.BridgeGroup{
+		Bridge: emptyStringToNil(terraformMap["bridge"].(string)),
+	}
+	if priority, ok := terraformMap["priority"]; ok {
+		priorityInt := priority.(int)
+		bridgeGroup.Priority = &priorityInt
+	}
+	if cost, ok := terraformMap["cost"]; ok {
+		costInt := cost.(int)
+		bridgeGroup.Cost = &costInt
+	}
+
+	return bridgeGroup
 }

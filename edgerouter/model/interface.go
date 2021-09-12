@@ -17,8 +17,15 @@ type BridgeInterface struct {
 
 // TunnelInterface represents an overlay tunnel
 type TunnelInterface struct {
-	Encapsulation string  `json:"encapsulation"`
-	LocalIP       string  `json:"local-ip"`
-	RemoteIP      string  `json:"remote-ip"`
-	BridgeGroup   *string `json:"bridge-group,omitempty"`
+	Encapsulation string       `json:"encapsulation"`
+	LocalIP       string       `json:"local-ip"`
+	RemoteIP      string       `json:"remote-ip"`
+	BridgeGroup   *BridgeGroup `json:"bridge-group,omitempty"`
+}
+
+// BridgeGroup contains the settings for which bridge an interface belongs to
+type BridgeGroup struct {
+	Bridge   *string `json:"bridge,omitempty"`
+	Cost     *int    `json:"cost,string,omitempty"`
+	Priority *int    `json:"priority,string,omitempty"`
 }
