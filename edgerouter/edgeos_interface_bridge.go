@@ -52,7 +52,7 @@ func edgeosInterfaceBridgeSetNode(d *schema.ResourceData) *model.Root {
 			Bridge: map[string]*model.BridgeInterface{
 				bridgeName: &model.BridgeInterface{
 					Disabled: model.ConvertToMarker(d.Get("disabled").(bool)),
-					Priority:  d.Get("priority").(int),
+					Priority: d.Get("priority").(int),
 				},
 			},
 		},
@@ -147,7 +147,8 @@ func edgeosInterfaceBridgeUpdate(d *schema.ResourceData, meta interface{}) error
 
 	var output model.Output
 	input := model.Input{
-		Set: edgeosInterfaceBridgeSetNode(d),
+		Delete: edgeosInterfaceBridgeReadDeleteNode(d),
+		Set:    edgeosInterfaceBridgeSetNode(d),
 	}
 
 	if err := client.Post(context.Background(), "/api/edge/batch.json", &input, &output); err != nil {

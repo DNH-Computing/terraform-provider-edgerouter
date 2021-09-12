@@ -19,7 +19,8 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			// "edgeos_interface_ethernet": resourceEdgeosInterfaceEthernet(),
+			"edgeos_interface_ethernet":  edgeosInterfaceEthernetResource(),
+			"edgeos_interface_tunnel":    edgeosInterfaceTunnelResource(),
 			"edgeos_interface_bridge":    edgeosInterfaceBridgeResource(),
 			"edgeos_zone_policy":         edgeosZonePolicyResource(),
 			"edgeos_zone_policy_from":    edgeosZonePolocyFromResource(),
